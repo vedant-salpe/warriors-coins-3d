@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Warrior Coins 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#efe6d2;--ink:#2a2118;--panel:#fbf5e6;--line:#2a2118;--accent:#b3261e}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1712;--ink:#f1e7d0;--panel:#2a241b;--line:#f1e7d0;--accent:#e0584d}}
+:root[data-theme="dark"]{--bg:#1b1712;--ink:#f1e7d0;--panel:#2a241b;--line:#f1e7d0;--accent:#e0584d}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 Georgia,'Times New Roman',serif;text-align:center}
+h1{font:900 28px Impact,'Arial Black',sans-serif;margin:10px 0 4px;letter-spacing:1px}
+#hud{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;padding:4px 8px;font-weight:bold}
+#wrap{position:relative;max-width:900px;margin:0 auto}
+canvas{width:100%;display:block;border:3px solid var(--line);touch-action:none}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+button{font:bold 15px Georgia,serif;color:var(--ink);background:var(--panel);border:2px solid var(--line);padding:6px 12px;margin:3px;cursor:pointer}
+button:focus-visible{outline:3px solid var(--accent)}button:disabled{opacity:.45;cursor:default}
+#shop{position:absolute;inset:0;background:var(--bg);overflow:auto;display:none;text-align:left;padding:10px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;border:2px solid var(--line);background:var(--panel);padding:8px;margin:6px 0}
+.item small{display:block;opacity:.8}.tier{border-width:3px}
+#msg{min-height:22px;color:var(--accent);font-weight:bold;padding:0 10px}
+.help{max-width:800px;margin:6px auto;padding:0 10px;font-size:14px;opacity:.9}
+</style></head><body>
+<h1>WARRIOR COINS 3D</h1>
+<div id="hud"></div>
+<div id="wrap"><canvas id="c"></canvas><div id="flash"></div><div id="shop"></div></div>
+<div><button id="bShop">Shop (B)</button><button id="bDyn">Dynamite (E)</button><button id="bNuke">Nuke (N)</button><button id="bJet">Jets (J)</button></div>
+<div id="msg"></div>
+<p class="help">Move: WASD or arrow keys. Aim with the mouse and hold click to shoot. Earn coins from animals and other warriors, then spend them in the shop.</p>
+<script>
+/* Paste your Stripe Payment Link URLs here (one per membership). Leave '' until you have them. */
+const PAY_LINKS={1:'',2:'',3:''};
+const W=800,H=500,$=id=>document.getElementById(id);
+const cv=$('c'),R=new THREE.WebGLRenderer({canvas:cv,antialias:true});R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;R.outputEncoding=THREE.sRGBEncoding;R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.05;R.setPixelRatio(Math.min(devicePixelRatio||1,2));
+const sc=new THREE.Scene();
+(function(){const c=document.createElement('canvas');c.width=4;c.height=256;const x=c.getContext('2d'),g=x.createLinearGradient(0,0,0,256);g.addColorStop(0,'#3d7cc0');g.addColorStop(.55,'#a9cde6');g.addColorStop(1,'#e8e2cc');x.fillStyle=g;x.fillRect(0,0,4,256);const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;sc.background=t})();
+sc.fog=new THREE.Fog(0xcfd9d2,380,950);
+const cam=new THREE.PerspectiveCamera(45,1.6,1,2000);
+function size(){const w=cv.clientWidth||800;R.setSize(w,w/1.6,false)}addEventListener('resize',size);size();
+sc.add(new THREE.HemisphereLight(0xcfe3ff,0x4a5a32,.6));
+const flashL=new THREE.PointLight(0xffc766,0,140);sc.add(flashL);
+function tex(kind,rep){const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');
+ if(kind==='grass'){x.fillStyle='#4a7a34';x.fillRect(0,0,256,256);for(let i=0;i<7000;i++){const g=90+Math.random()*80|0;x.strokeStyle=`rgba(${g*.45|0},${g},${g*.35|0},.55)`;const px=Math.random()*256,py=Math.random()*256;x.beginPath();x.moveTo(px,py);x.lineTo(px+Math.random()*3-1.5,py-3-Math.random()*5);x.stroke()}}
+ else{x.fillStyle='#bbb';x.fillRect(0,0,256,256);for(let i=0;i<5000;i++){const g=100+Math.random()*155|0;x.strokeStyle=`rgba(${g},${g},${g},.5)`;const px=Math.random()*256,py=Math.random()*256;x.beginPath();x.moveTo(px,py);x.lineTo(px+Math.random()*2,py+2+Math.random()*6);x.stroke()}}
+ const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rep,rep);t.encoding=THREE.sRGBEncoding;t.anisotropy=8;return t}
+const FUR=tex('fur',1);
+{const gm=new THREE.InstancedMesh(new THREE.ConeGeometry(1.3,8,4),new THREE.MeshStandardMaterial({color:0xffffff,roughness:1}),2500),d=new THREE.Object3D(),c=new THREE.Color();
+ for(let i=0;i<2500;i++){d.position.set((Math.random()-.5)*900,3,(Math.random()-.5)*620);d.scale.set(1,.6+Math.random()*1.2,1);d.rotation.set((Math.random()-.5)*.4,Math.random()*6,(Math.random()-.5)*.4);d.updateMatrix();gm.setMatrixAt(i,d.matrix);gm.setColorAt(i,c.setHSL(.25+Math.random()*.06,.5,.2+Math.random()*.15))}
+ sc.add(gm)}
+const sun=new THREE.DirectionalLight(0xfff0d0,1.1);sun.position.set(200,400,150);sun.castShadow=true;sun.shadow.bias=-.0006;
+Object.assign(sun.shadow.camera,{left:-500,right:500,top:350,bottom:-350,far:1000});sun.shadow.mapSize.set(2048,2048);sc.add(sun);
+const gnd=new THREE.Mesh(new THREE.PlaneGeometry(3000,3000),new THREE.MeshStandardMaterial({map:tex('grass',90),roughness:1}));
+gnd.rotation.x=-Math.PI/2;gnd.receiveShadow=true;sc.add(gnd);
+/* model helpers */
+const M=(c,e)=>new THREE.MeshStandardMaterial({color:c,roughness:.8,map:e?null:FUR,emissive:e||0,emissiveIntensity:e?.8:0});
+function mesh(g,c,x,y,z,s,e){const m=new THREE.Mesh(g,M(c,e));m.position.set(x,y,z);m.castShadow=true;if(s)m.scale.set(s[0],s[1],s[2]);return m}
+const bx=(w,h,d,c,x,y,z,e)=>mesh(new THREE.BoxGeometry(w,h,d),c,x,y,z,0,e);
+const sp=(r,c,x,y,z,s,e)=>mesh(new THREE.SphereGeometry(r,14,10),c,x,y,z,s,e);
+const cn=(r,h,c,x,y,z,e)=>mesh(new THREE.ConeGeometry(r,h,8),c,x,y,z,0,e);
+for(let i=0;i<60;i++){const a=Math.random()*6.283,rx=480+Math.random()*350,x=Math.cos(a)*rx,z=Math.sin(a)*(rx*.7);
+ const t=new THREE.Group();t.add(mesh(new THREE.CylinderGeometry(3,4,22,6),0x5a3d22,0,11,0));
+ for(let k=0;k<6;k++)t.add(mesh(new THREE.IcosahedronGeometry(11+Math.random()*6,1),[0x2f5e2a,0x3a7234,0x2a5526][k%3],(Math.random()-.5)*16,34+k*5+Math.random()*6,(Math.random()-.5)*16));t.position.set(x,0,z);t.scale.setScalar(.8+Math.random()*.8);sc.add(t)}
+for(let i=0;i<25;i++){const r=sp(5+Math.random()*7,0x77746c,(Math.random()-.5)*1100,0,(Math.random()-.5)*800,[1,.7,1]);
+ if(Math.abs(r.position.x)>420||Math.abs(r.position.z)>270)sc.add(r)}
+function leg(g,c,x,z,h){const p=new THREE.Group();p.position.set(x,h,z);p.add(mesh(new THREE.CylinderGeometry(2.6,1.5,h,8),c,0,-h/2,0),sp(2.2,c,0,-h+1,1.2,[1,.6,1.4]));g.add(p);(g.userData.legs=g.userData.legs||[]).push(p)}
+function quad(col,belly,k,ear,eyes){const g=new THREE.Group();
+ g.add(sp(10,col,0,15,0,[1,.85,1.9]),sp(7,belly,0,12,5,[1.05,.7,1.3]),sp(7,col,0,21,18,[1,1,1.1]),sp(4,belly,0,18,25,[1,.8,1.7]),sp(1.5,0x111111,0,19,30));
+ g.add(sp(1.3,0x1a1208,-3,23,23),sp(1.3,0x1a1208,3,23,23),sp(.5,0xffffff,-3.3,23.5,24,0,0xffffff),sp(.5,0xffffff,2.7,23.5,24,0,0xffffff));for(let i=0;i<7;i++){const f=cn(2,7,col,(i-3)*2.4,20-Math.abs(i-3)*.6,12);f.rotation.x=.9;g.add(f)}
+ if(ear==='round')g.add(sp(2.5,col,-5,28,16),sp(2.5,col,5,28,16));else if(ear==='flop')g.add(sp(3,0x6b4a2b,-6,23,16,[.5,1.3,.8]),sp(3,0x6b4a2b,6,23,16,[.5,1.3,.8]));else g.add(cn(2.5,7,col,-4,29,15),cn(2.5,7,col,4,29,15));
+ [[-5,9],[5,9],[-5,-9],[5,-9]].forEach(p=>leg(g,col,p[0],p[1],12));
+ const t=cn(3,16,col,0,18,-20);t.rotation.x=-1.1;g.add(t);g.scale.setScalar(k);return g}
+function wing(g,side,len,w,col,y){const p=new THREE.Group();p.add(bx(len,.8,w,col,side*len/2,0,0));p.position.set(side*4,y,0);g.add(p);(g.userData.wings=g.userData.wings||[]).push([p,side])}
+const wolf=()=>quad(0x74777d,0xb8b8b8,1,'point'),bear=()=>quad(0x5b3a1f,0x4a2f19,1.7,'round'),dog=()=>quad(0xc79a5b,0xe8d3a8,.9,'flop');
+function hawk(){const g=new THREE.Group();g.add(sp(5,0x6b4a2b,0,0,0,[1,.9,1.8]),sp(3.5,0xf0f0f0,0,3,9),cn(1.4,5,0xe8b100,0,2,14),cn(3,10,0x4a3220,0,-1,-12));
+ g.children[2].rotation.x=Math.PI/2;g.children[3].rotation.x=-Math.PI/2;wing(g,1,22,9,0x5a3b22,1);wing(g,-1,22,9,0x5a3b22,1);g.userData.fly=34;return g}
+function dragon(k=2.1){const g=quad(0x2e8b57,0xd9c36a,k,'point');
+ g.add(cn(2,8,0xf4efe0,-3,33,17),cn(2,8,0xf4efe0,3,33,17));
+ for(let i=0;i<5;i++)g.add(cn(2,6,0xb3261e,0,26-i*2,8-i*7));
+ wing(g,1,34,16,0x1f5e3c,22);wing(g,-1,34,16,0x1f5e3c,22);g.add(sp(1.8,0xffa500,-3,23,24,0,0xffa500),sp(1.8,0xffa500,3,23,24,0,0xffa500));g.userData.fly=60;g.userData.tuck=1;return g}
+function human(armor,trim,flame){const g=new THREE.Group();
+ leg(g,0x2b2b2b,-3.5,0,15);leg(g,0x2b2b2b,3.5,0,15);g.add(bx(14,16,8,armor,0,23,0),bx(4,14,4,armor,-9,23,0),bx(4,14,4,armor,9,23,0),
+ sp(5,0xe0b58f,0,36,0),sp(5.6,trim,0,38,0,[1,.8,1]),bx(2.4,3,16,0x1a1a1a,6,24,7),bx(8,2,2,trim,0,28,4),bx(15,3,9,0x1a1a1a,0,16,0),bx(8,2.5,1,0x111111,0,38.5,4.6,0x335577),bx(4,5,2,0x222222,-5,22,5),bx(4,5,2,0x222222,5,22,5));
+ if(flame){for(let i=0;i<5;i++){const f=cn(2.2,10+i%2*5,0xff6a00,(i-2)*2.2,46+(i%2)*2,-1,0xff4400);g.add(f)}g.add(sp(2,0xff4400,0,44,0,0,0xff4400))}return g}
+function label(txt,col){const c=document.createElement('canvas');c.width=128;c.height=32;const x=c.getContext('2d');x.font='bold 20px Georgia';x.textAlign='center';x.fillStyle=col||'#fff';x.strokeStyle='#000';x.lineWidth=4;x.strokeText(txt,64,23);x.fillText(txt,64,23);
+ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));s.scale.set(36,9,1);return s}
+function hbar(g,y){const b=new THREE.Group(),f=mesh(new THREE.BoxGeometry(30,2.4,1).translate(15,0,0),0xe0584d,-15,0,.6);
+ b.add(mesh(new THREE.BoxGeometry(31,3,1),0x000000,0,0,0),f);b.position.y=y;g.add(b);g.userData.bar=b;g.userData.fill=f}
+/* data */
+const GUNS=[{id:'pistol',name:'Starter Pistol',cost:0,dmg:10,rate:380,pel:1,spread:0},{id:'smg',name:'SMG',cost:150,dmg:8,rate:110,pel:1,spread:.12},
+ {id:'shotgun',name:'Shotgun',cost:300,dmg:9,rate:600,pel:6,spread:.35},{id:'rifle',name:'Sniper Rifle',cost:500,dmg:55,rate:520,pel:1,spread:0},
+ {id:'minigun',name:'Minigun',cost:1000,dmg:12,rate:55,pel:1,spread:.18}];
+const PETS=[{id:'dog',name:'Dog',cost:100,dps:6,rng:70,mk:dog},{id:'hawk',name:'Hawk',cost:250,dps:14,rng:110,mk:hawk},
+ {id:'wolf',name:'Wolf',cost:400,dps:24,rng:80,mk:wolf},{id:'dragon',name:'Plus Dragon',cost:0,dps:60,rng:140,mk:dragon,plus:1}];
+const TIERS=[{lvl:1,name:'Plus',price:2,desc:'Exclusive Plus gear set, 3 supersonic jets, plus a really good pet: the glowing Plus Dragon.'},
+ {lvl:2,name:'Pro',price:4,desc:'Everything in Plus, plus the Pro gear set, 7 more jets (10 total), 100 dynamite and 100 warrior coins.'},
+ {lvl:3,name:'Modern',price:5,desc:'Everything in Pro, plus the Modern gear set, 30 nukes and 20 more nuclear supersonic jets (30 total).'}];
+const BOTS=['Blaze','NovaX','Rex_99','AI-Kira','xXSniperXx'];
+let pf='all',ps='all',pg=0;
+const VAR=[['Tan',0xb0905a,0],['Gray',0x808080,0],['Brown',0x6b4a2b,0],['Forest',0x3f7a3a,1],['Ocean',0x2f78b0,1],['Sand',0xe0c88a,1],['Crimson',0xb02030,2],['Violet',0x7a40c0,2],['Frost',0xbfe4f5,2],['Golden',0xe8b633,3],['Shadow',0x24242c,3],['Ember',0xff5a1f,3],['Celestial',0x6fa8ff,4],['Inferno',0xff2a00,4],['Toxic',0x6aff2a,4],['Cosmic',0xc04fff,5],['Void',0x5a00aa,5]];
+const VC=[1,2,4,8,16,30],SM=[1,1.5,2.2,3.5,6,10],GLW=[0,0,0,.15,.3,.5],TNM=['Common','Uncommon','Rare','Epic','Legendary','Mythic'],TC=['#8a8a8a','#3f9a4a','#3a7fd0','#a050e0','#e8a020','#ff4fa0'];
+const bird=k=>{const g=hawk();g.scale.setScalar(k);return g},qd=(a,b,k,e)=>()=>quad(a,b,k,e);
+function wingsOn(g,len,w,c,y){wing(g,1,len,w,c,y);wing(g,-1,len,w,c,y)}
+function unicorn(){const g=quad(0xf4f4f8,0xffffff,1.8,'point'),h=cn(1.6,13,0xffd866,0,31,22,0xffd866);h.rotation.x=.45;g.add(h);
+ for(let i=0;i<6;i++){const m=cn(2,9,[0xff8ad8,0x8ad8ff,0xc88aff][i%3],0,27-i*2.2,10-i*2.5,0x552255);m.rotation.x=.6;g.add(m)}return g}
+function pegasus(){const g=quad(0xf8f8ff,0xffffff,1.8,'point');wingsOn(g,30,14,0xeeeeff,22);g.userData.fly=38;return g}
+function griffin(){const g=quad(0xc9a050,0xb8863a,1.6,'round'),b=cn(2.2,8,0xe8b100,0,18,31);b.rotation.x=Math.PI/2;g.add(b);wingsOn(g,30,14,0xb88a40,22);g.userData.fly=34;return g}
+function cerberus(){const c=0x1c1c20,g=quad(c,0x2a2a30,1.7,'point');for(const x of [-11,11])g.add(sp(7,c,x,21,16,[1,1,1.1]),sp(4,0x2a2a30,x,18,23,[1,.8,1.7]),sp(1.2,0xff3300,x-3,23,22,0,0xff3300),sp(1.2,0xff3300,x+3,23,22,0,0xff3300));return g}
+function kitsune(){const g=quad(0xf2a040,0xffffff,.9,'point');for(let i=0;i<8;i++){const t=cn(3,18,i%2?0xffffff:0xf2a040,0,19,-20);t.rotation.x=-1-Math.abs(i-3.5)*.06;t.rotation.z=(i-3.5)*.28;g.add(t)}g.add(sp(2,0x66ccff,0,34,18,0,0x66ccff));return g}
+function phoenix(){const g=hawk();g.scale.setScalar(1.7);for(let i=-2;i<=2;i++){const f=cn(1.6,24,0xff6a00,i*2.4,-1,-22,0xff4400);f.rotation.x=-Math.PI/2;g.add(f)}g.add(sp(2,0xffcc33,0,3,10,0,0xffaa00));g.userData.fly=48;return g}
+function thunderbird(){const g=hawk();g.scale.setScalar(2.1);for(const x of [-3,3]){const l=cn(1.4,12,0x66ddff,x,4,-8,0x66ddff);l.rotation.x=-.8;g.add(l)}g.userData.fly=52;return g}
+function yeti(){const g=quad(0xeef2f5,0xdde4ea,1.7,'round');g.add(sp(1.2,0x66bbff,-3,23,24,0,0x66bbff),sp(1.2,0x66bbff,3,23,24,0,0x66bbff));return g}
+function edragon(o){const g=quad(o.b,o.bl,o.k||2.1,'point');
+ g.add(cn(2,8,o.hn||0xf4efe0,-3,33,17),cn(2,8,o.hn||0xf4efe0,3,33,17));
+ for(let i=0;i<5;i++)g.add(cn(2,6,o.s,0,26-i*2,8-i*7,o.se));
+ wing(g,1,34,16,o.w,22);wing(g,-1,34,16,o.w,22);
+ g.add(sp(1.8,o.e,-3,23,24,0,o.e),sp(1.8,o.e,3,23,24,0,o.e));
+ if(o.x)o.x(g);g.userData.fly=60;g.userData.tuck=1;return g}
+const DRAG=['plusdragon','drake','wyvern','dragon','elder','fire','night','ice','storm','earth','sea','solar','venom','crystal','bone'];
+const eFire=()=>edragon({b:0xc2301a,bl:0xf0a030,w:0x8a1a10,s:0xffcc33,se:0xffaa00,e:0xffee55,x:g=>{for(let i=0;i<6;i++)g.add(cn(2.4,10,0xff6a00,0,28-i*2,12-i*5,0xff4400));g.add(sp(3,0xffaa00,0,12,-29,0,0xff6600))}});
+const eNight=()=>edragon({b:0x14142a,bl:0x2a2a55,w:0x0b0b1f,s:0x6a4fd0,se:0x4a2fb0,e:0xb070ff,hn:0x8a7acf,x:g=>{for(let i=0;i<10;i++){const x=(Math.random()-.5)*12,z=(Math.random()-.5)*24,t=1-(x/10)**2-(z/19)**2;if(t>0)g.add(sp(.8,0xffffff,x,15+8.5*Math.sqrt(t),z,0,0xffffff))}}});
+const eIce=()=>edragon({b:0xa8dff5,bl:0xffffff,w:0x7ab8e0,s:0xe8fbff,se:0x66ccff,e:0x66ffff,x:g=>{for(let i=0;i<6;i++)g.add(cn(1.8,10,0xe8fbff,i%2?4:-4,27-i*2,10-i*5,0x66ccff))}});
+const eStorm=()=>edragon({b:0x4a5a7a,bl:0x9aa8c0,w:0x2f3b55,s:0xffe14d,se:0xffe14d,e:0xffe14d,x:g=>{for(const x of [-6,6]){const l=cn(1.2,12,0xffe14d,x,29,0,0xffe14d);l.rotation.z=x>0?-.5:.5;g.add(l)}}});
+const eEarth=()=>edragon({b:0x6b5a3a,bl:0x8a7a50,w:0x4a3f2a,s:0x7a8a6a,e:0xff9a2a,x:g=>{for(let i=0;i<6;i++)g.add(sp(3.5,0x7a7a72,i%2?5:-5,23-i*.4,8-i*5,[1,.7,1]))}});
+const eSea=()=>edragon({b:0x1f7a9a,bl:0xd0f0f0,w:0x155a78,s:0x40e0d0,se:0x20c0b0,e:0x66ffee,x:g=>{g.add(bx(1,10,16,0x40e0d0,0,28,-2,0x108a80))}});
+const eSolar=()=>edragon({b:0xe8c030,bl:0xfff0b0,w:0xffe070,s:0xffffff,se:0xffe080,e:0xffffff,x:g=>{g.add(mesh(new THREE.TorusGeometry(7,.9,8,24),0xffe070,0,30,10,0,0xffd040))}});
+const eVenom=()=>edragon({b:0x4a7a2a,bl:0xb0d040,w:0x2a4a18,s:0xb0ff30,se:0xb0ff30,e:0xb0ff30,x:g=>{for(const x of [-1.5,1.5])g.add(sp(1,0xb0ff30,x,15,30,0,0xb0ff30))}});
+const eCrystal=()=>edragon({b:0xc080e0,bl:0xf0d0ff,w:0x8a50c0,s:0xff80ff,se:0xff60ff,e:0xffffff,x:g=>{for(let i=0;i<8;i++)g.add(cn(2,12,[0xff80ff,0x80c0ff][i%2],(i-3.5)*2.5,26+(i%2)*2,6-i*2,[0xff40ff,0x4080ff][i%2]))}});
+const eBone=()=>edragon({b:0xe8e0c8,bl:0xc8c0a8,w:0xb8b098,s:0x888070,e:0xff3030,x:g=>{for(let z=-10;z<=10;z+=5)for(const x of [-9.5,9.5])g.add(bx(1,10,1.5,0xd8d0b8,x,14,z))}});
+const MYTH=['phoenix','unicorn','pegasus','griffin','cerberus','kitsune','thunderbird','yeti'];
+const SPS=[['dog','Dog',100,6,70,qd(0xc79a5b,0xe8d3a8,.9,'flop')],['cat','Cat',100,6,70,qd(0x8a8a8a,0xdddddd,.6,'point')],['fox','Fox',120,7,70,qd(0xd2691e,0xf5f5f5,.8,'point')],
+['husky','Husky',150,8,70,qd(0x9aa0a8,0xf0f0f0,1,'point')],['coyote','Coyote',150,8,70,qd(0xb09060,0xd8c8a0,.9,'point')],['lynx','Lynx',200,10,75,qd(0xbfa070,0xeeeeee,.9,'point')],
+['hyena','Hyena',200,10,75,qd(0x9a8860,0xb8a880,1,'point')],['boar','Boar',220,11,70,qd(0x4a3a30,0x3a2e26,1.1,'point')],['deer','Deer',220,9,80,qd(0xa0703c,0xe8d8b8,1.3,'point')],
+['horse','Horse',300,12,80,qd(0x7a4a2a,0x5a3820,1.8,'point')],['wolf','Wolf',300,16,80,wolf],['bison','Bison',350,16,80,qd(0x3a2a20,0x2a1e16,1.9,'round')],
+['panther','Panther',350,18,80,qd(0x1c1c22,0x2a2a30,1.1,'point')],['lion','Lion',400,20,85,qd(0xc9a050,0xb8863a,1.4,'round')],['bear','Bear',400,20,85,bear],
+['tiger','Tiger',450,22,85,qd(0xe08a2b,0xf2e6d0,1.3,'round')],['grizzly','Grizzly',500,26,90,qd(0x6b4a2b,0x5a3a20,1.9,'round')],
+['hawk','Hawk',250,14,110,()=>bird(1)],['owl','Owl',300,16,110,()=>bird(1.1),0xc8b090],['eagle','Eagle',350,20,120,()=>bird(1.5),0x3a2a1a],['falcon','Falcon',400,22,120,()=>bird(.9),0x707880],
+['drake','Drake',800,34,110,()=>dragon(1.4),0x7a6a40],['wyvern','Wyvern',1200,46,120,()=>dragon(1.7),0x5a4a8a],['dragon','Dragon',2000,60,140,()=>dragon()],['elder','Elder Dragon',3500,90,150,()=>dragon(2.6),0x8a2a2a],
+['phoenix','Phoenix',3000,70,140,phoenix,0xff7a1a],['unicorn','Unicorn',2500,50,100,unicorn],['pegasus','Pegasus',3200,60,120,pegasus],['griffin','Griffin',3500,75,130,griffin],['cerberus','Cerberus',4000,95,100,cerberus],['kitsune','Kitsune',3000,65,100,kitsune],['thunderbird','Thunderbird',5000,110,150,thunderbird,0x3a4a8a],['yeti','Yeti',3500,85,90,yeti],
+['fire','Fire Dragon',2500,70,140,eFire,null,.3],['night','Night Dragon',3000,80,145,eNight,null,.3],['ice','Ice Dragon',2600,68,140,eIce,null,.3],['storm','Storm Dragon',3200,85,150,eStorm,null,.3],
+['earth','Earth Dragon',2400,66,130,eEarth,null,.3],['sea','Sea Dragon',2400,64,140,eSea,null,.3],['solar','Solar Dragon',4000,100,150,eSolar,null,.3],['venom','Venom Dragon',2800,72,135,eVenom,null,.3],
+['crystal','Crystal Dragon',3600,92,140,eCrystal,null,.3],['bone','Bone Dragon',3000,78,135,eBone,null,.3]];
+const PL=[{id:'plusdragon',name:'Plus Dragon',cost:0,dps:90,rng:140,plus:1,t:6,sp:{id:'plusdragon',mk:()=>dragon()},v:null}],PM={};
+SPS.forEach(s=>VAR.forEach(v=>PL.push({id:s[0]+'_'+v[0].toLowerCase(),name:v[0]+' '+s[1],cost:Math.round(s[2]*VC[v[2]]),dps:Math.round(s[3]*SM[v[2]]),rng:s[4],t:v[2],sp:{id:s[0],mk:s[5],tn:s[6],va:s[7]},v:{c:v[1],t:v[2]}})));
+PL.forEach(p=>PM[p.id]=p);
+function tint(m,hex,a,gl){const t=new THREE.Color(hex);m.traverse(o=>{const x=o.material;if(x&&x.emissive&&!x.emissive.getHex()&&x.color.r+x.color.g+x.color.b>.3){x.color.lerp(t,a);if(gl){x.emissive.copy(t);x.emissiveIntensity=gl}}})}
+function mkPet(p){const m=p.sp.mk();if(p.sp.tn)tint(m,p.sp.tn,.5);if(p.v)tint(m,p.v.c,p.sp.va||.55,GLW[p.v.t]);else tint(m,0xffd060,.2,.35);return m}
+const lim=()=>3+S.member;
+function equipPet(id,force){const i=S.act.indexOf(id);
+ if(i>=0){if(force)return;S.act.splice(i,1);const k=S.pets.findIndex(p=>p.id===id);sc.remove(S.pets[k].m);S.pets.splice(k,1);return}
+ if(S.act.length>=lim()){if(!force)return say('Pet slots full ('+lim()+'). Unequip one first.');const o=S.act.shift(),k=S.pets.findIndex(p=>p.id===o);sc.remove(S.pets[k].m);S.pets.splice(k,1)}
+ S.act.push(id);const m=mkPet(PM[id]);sc.add(m);S.pets.push({id,m})}
+function petUI(){const L=PL.filter(p=>(!p.plus||S.owned[p.id])&&(pf==='all'||(pf==='own'?S.owned[p.id]:pf==='myth'?MYTH.includes(p.sp.id):pf==='drag'?DRAG.includes(p.sp.id):p.t==pf))&&(ps==='all'||p.sp.id===ps)),n=Math.max(1,Math.ceil(L.length/8));pg=Math.max(0,Math.min(pg,n-1));
+ let h=`<div>${PL.length-1} pets to collect. Active ${S.act.length}/${lim()}. Each membership level adds a pet slot.</div><div>`;
+ for(const f of ['all','own','myth','drag',0,1,2,3,4,5])h+=`<button data-flt="${f}" ${String(pf)===String(f)?'style="background:var(--accent);color:#fff"':''}>${f==='all'?'All':f==='own'?'Owned':f==='myth'?'Mythical':f==='drag'?'Dragons':TNM[f]}</button>`;
+ h+=`</div><div><select id="spf"><option value="all">All species</option>${SPS.map(s=>`<option value="${s[0]}" ${ps===s[0]?'selected':''}>${s[1]}</option>`).join('')}</select></div>`;
+ for(const p of L.slice(pg*8,pg*8+8)){const own=S.owned[p.id],on=S.act.includes(p.id);
+  h+=`<div class="item"><span><b style="color:${TC[p.t]||'#e8a020'}">${p.name}</b><small>${TNM[p.t]||'Plus'} pet, ${p.dps} damage per second</small></span><button ${own?'data-eq':'data-pet'}="${p.id}">${own?(on?'Unequip':'Equip'):'Buy 🪙'+p.cost}</button></div>`}
+ return h+`<div><button data-pgo="-1" ${pg<1?'disabled':''}>Prev</button> Page ${pg+1} of ${n} <button data-pgo="1" ${pg>=n-1?'disabled':''}>Next</button></div>`}
+/* gear */
+const SL=['helmet','vest','boots','cape'],TNG=['','Leather','Iron','Steel','Titan','Mythril','Plus','Pro','Modern'],GC=[0,0x8b5a2b,0x9aa0a8,0x5d6f80,0x2b5f9a,0x6b8f3a,0x3a8fd0,0xc03a3a,0x2a2f3a],GV=[0,1,2,3,4,5,3.5,6,10],GCOST=[0,60,150,350,800,1800],GI={},GL=[];
+SL.forEach(s=>{for(let t=1;t<=8;t++){const v=GV[t],it={id:s+'_'+t,slot:s,t,name:TNG[t]+' '+s[0].toUpperCase()+s.slice(1),cost:GCOST[t]||0,mem:t>5,col:GC[t],
+ hp:Math.round(({helmet:10,vest:25,boots:5,cape:0})[s]*v),dmg:Math.round(({helmet:2,cape:4})[s]*v||0),spd:Math.round(({boots:3})[s]*v||0),coin:Math.round(({cape:3})[s]*v||0)};GI[it.id]=it;GL.push(it)}});
+function recalc(){let hp=100,d=1,sp=1,c=1;for(const k in S.gear){const it=GI[S.gear[k]];if(it){hp+=it.hp;d+=it.dmg/100;sp+=it.spd/100;c+=it.coin/100}}
+ const old=S.max;S.max=hp;S.hp=Math.min(hp,S.hp+Math.max(0,hp-old));S.dm=d;S.sp=sp;S.cm=c}
+function rebuild(){if(hero)sc.remove(hero);const g=S.gear;hero=human(g.vest?GI[g.vest].col:0x3a6ea5,g.helmet?GI[g.helmet].col:0x2f7d32);
+ if(g.cape)hero.add(mesh(new THREE.BoxGeometry(12,22,1),GI[g.cape].col,0,23,-5));
+ if(g.boots)hero.userData.legs.forEach(l=>l.children.forEach(c=>c.material.color.set(GI[g.boots].col)));sc.add(hero)}
+function giveGear(t){for(const s of SL){const id=s+'_'+t;S.gOwned[id]=1;S.gear[s]=id}recalc();rebuild()}
+const ITEMS=[{k:'jets',n:1,cost:400,name:'Supersonic Jet',d:'Sweeps across the map and wipes out enemies in its path'},{k:'jets',n:5,cost:1800,name:'Jet Squadron (5 jets)',d:'Five supersonic jets, 10% cheaper'},{k:'jets',n:10,cost:3400,name:'Jet Wing (10 jets)',d:'Ten supersonic jets, 15% cheaper'},
+{k:'dyn',n:5,cost:75,name:'Dynamite x5',d:'Big blast where you aim'},{k:'dyn',n:20,cost:250,name:'Dynamite x20',d:'A crate of dynamite'},{k:'nuke',n:1,cost:1500,name:'Nuke',d:'Wipes out every enemy on the map'}];
+function itemsUI(){let h=`<div>You have ${S.jets} jets (J), ${S.dyn} dynamite (E), ${S.nuke} nukes (N).</div>`;ITEMS.forEach((it,i)=>{h+=`<div class="item"><span><b>${it.name}</b><small>${it.d}</small></span><button data-it="${i}">Buy 🪙${it.cost}</button></div>`});return h}
+function gearUI(){let h=`<div>Health ${S.max}, damage +${Math.round((S.dm-1)*100)}%, speed +${Math.round((S.sp-1)*100)}%, coins +${Math.round((S.cm-1)*100)}%</div>`;
+ for(const s of SL){h+=`<h3 style="margin:10px 0 0">${s[0].toUpperCase()+s.slice(1)}</h3>`;
+  for(const it of GL.filter(i=>i.slot===s)){const own=S.gOwned[it.id],eq=S.gear[s]===it.id;
+   const st=[it.hp&&'+'+it.hp+' health',it.dmg&&'+'+it.dmg+'% damage',it.spd&&'+'+it.spd+'% speed',it.coin&&'+'+it.coin+'% coins'].filter(Boolean).join(', ');
+   h+=`<div class="item"><span><b>${it.name}</b><small>${st}${it.mem?' (membership gear)':''}</small></span>`+(it.mem&&!own?'<button disabled>Members only</button>':`<button ${eq?'disabled':''} data-${own?'ge':'gb'}="${it.id}">${eq?'Equipped':own?'Equip':'Buy 🪙'+it.cost}</button>`)+'</div>'}}
+ return h}
+
+let S,keys={},mouse={x:400,y:250,down:false},ndc=new THREE.Vector2(),shopOpen=false,tab='guns',hero;
+function clear(){if(!S)return;[...S.en,...S.bu,...S.fx,...S.jetList].forEach(o=>sc.remove(o.m));S.pets.forEach(p=>sc.remove(p.m));sc.remove(hero)}
+function fresh(keep){clear();S=Object.assign({x:400,y:250,hp:100,max:100,coins:20,kills:0,dyn:0,nuke:0,jets:0,gun:'pistol',guns:{pistol:1},pets:[],owned:{},act:[],gear:{},gOwned:{},dm:1,sp:1,cm:1,member:0,
+ en:[],bu:[],fx:[],jetList:[],last:0,spawn:0,over:false},keep||{});S.pets.forEach(p=>{p.m=mkPet(PM[p.id]);sc.add(p.m)});
+ hero=null;recalc();rebuild();if(keep)S.hp=S.max}
+fresh();
+const say=t=>{$('msg').textContent=t;clearTimeout(say.t);say.t=setTimeout(()=>$('msg').textContent='',3500)};
+const gun=()=>GUNS.find(g=>g.id===S.gun),tw=(x,y)=>[x-400,y-250];
+function hud(){$('hud').innerHTML=`<span>❤️ ${Math.ceil(S.hp)}/${S.max}</span><span>🪙 ${S.coins}</span><span>🏆 ${S.kills}</span><span>🧨 ${S.dyn}</span><span>☢️ ${S.nuke}</span><span>✈️ ${S.jets}</span><span>${gun().name}</span><span>${['Free','Plus','Pro','Modern'][S.member]} member</span>`}
+function spawn(){const side=Math.random()*4|0;let x,y;
+ if(side==0){x=Math.random()*W;y=-20}else if(side==1){x=W+20;y=Math.random()*H}else if(side==2){x=Math.random()*W;y=H+20}else{x=-20;y=Math.random()*H}
+ const t=Math.random(),lv=1+S.kills/15;let e;
+ if(t<.5)e={hp:30*lv,sp:70,r:16,coin:8,melee:6,m:wolf()};
+ else if(t<.7)e={hp:90*lv,sp:45,r:24,coin:20,melee:14,m:bear()};
+ else{const n=BOTS[Math.random()*5|0];e={hp:60*lv,sp:55,r:16,coin:30,shoot:1.4,name:n,m:n==='Blaze'?human(0xd9531e,0x7a1f0a,1):human([0x556b2f,0x6a3d8f,0x8a8a8a,0x1f4f7a][Math.random()*4|0],0x222222)};
+  const l=label(n,n==='Blaze'?'#ff9a4d':'#fff');l.position.y=60;e.m.add(l)}
+ Object.assign(e,{x,y,max:e.hp,cd:1,ph:Math.random()*9});hbar(e.m,e.shoot?52:e.r*2+14);sc.add(e.m);S.en.push(e)}
+function pop(txt,x,y){const [X,Z]=tw(x,y),m=label(txt,'#ffd34d');m.position.set(X,40,Z);sc.add(m);S.fx.push({m,t:.7,t0:.7,rise:1})}
+function hit(e,d){e.hp-=d;if(e.hp<=0&&!e.dead){e.dead=1;const cc=Math.round(e.coin*S.cm);S.coins+=cc;S.kills++;pop('+'+cc,e.x,e.y)}}
+const bg=new THREE.SphereGeometry(2.2,6,6),bm=new THREE.MeshBasicMaterial({color:0xffe066}),bm2=new THREE.MeshBasicMaterial({color:0xff5555});
+function shot(x,y,vx,vy,d,own){const m=new THREE.Mesh(bg,own?bm:bm2),[X,Z]=tw(x,y);m.position.set(X,22,Z);sc.add(m);S.bu.push({x,y,vx,vy,d,l:.9,own,m})}
+function blast(x,y,r,col,life){const m=new THREE.Mesh(new THREE.SphereGeometry(r,16,12),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.7})),[X,Z]=tw(x,y);
+ m.position.set(X,10,Z);sc.add(m);S.fx.push({m,t:life,t0:life,grow:1})}
+function fire(now){const g=gun();if(now-S.last<g.rate)return;S.last=now;flashL.intensity=2.5;flashL.position.set(S.x-400,28,S.y-250);const a=Math.atan2(mouse.y-S.y,mouse.x-S.x);
+ for(let i=0;i<g.pel;i++){const b=a+(Math.random()-.5)*g.spread*2;shot(S.x,S.y,Math.cos(b)*620,Math.sin(b)*620,g.dmg*S.dm,1)}}
+function dyn(){if(S.dyn<1)return say('No dynamite. Buy some in the shop (Jets & items tab) or join Pro.');S.dyn--;blast(mouse.x,mouse.y,90,0xff9f1c,.5);S.en.forEach(e=>{if(Math.hypot(e.x-mouse.x,e.y-mouse.y)<90)hit(e,150)})}
+function nuke(){if(S.nuke<1)return say('No nukes. Buy one in the shop (Jets & items tab) or join Modern.');S.nuke--;$('flash').style.opacity=1;S.en.forEach(e=>{blast(e.x,e.y,40,0xffb347,1);hit(e,600)})}
+function jets(){if(S.jets<1)return say('No jets. Buy some in the shop (Jets & items tab) or join a membership.');S.jets--;
+ for(let i=0;i<4;i++){const j=new THREE.Group();j.add(mesh(new THREE.CylinderGeometry(3,2,40,8).rotateZ(-Math.PI/2),0x8a929a,0,0,0),bx(8,1,38,0x70777e,-2,0,0),bx(8,8,1,0x70777e,-16,5,0),cn(2.5,8,0xff7a00,-23,0,0,0xff7a00));
+  j.children[3].rotation.z=Math.PI/2;j.children[0].geometry.rotateY(0);j.scale.setScalar(1.6);sc.add(j);S.jetList.push({m:j,x:-60-i*70,y:60+i*120})}}
+function step(dt,now,tm){
+ let dx=(keys.d||keys.ArrowRight?1:0)-(keys.a||keys.ArrowLeft?1:0),dy=(keys.s||keys.ArrowDown?1:0)-(keys.w||keys.ArrowUp?1:0);
+ if(dx&&dy){dx*=.7;dy*=.7}S.x=Math.max(14,Math.min(W-14,S.x+dx*190*S.sp*dt));S.y=Math.max(14,Math.min(H-14,S.y+dy*190*S.sp*dt));
+ if(mouse.down)fire(now);
+ S.spawn-=dt;if(S.spawn<=0&&S.en.length<8+S.kills/6){spawn();S.spawn=Math.max(.5,1.6-S.kills/60)}
+ for(const e of S.en){const a=Math.atan2(S.y-e.y,S.x-e.x),d=Math.hypot(S.x-e.x,S.y-e.y);
+  if(!e.shoot||d>200){e.x+=Math.cos(a)*e.sp*dt;e.y+=Math.sin(a)*e.sp*dt}e.cd-=dt;
+  if(e.melee&&d<e.r+14&&e.cd<=0){S.hp-=e.melee;e.cd=.8}
+  if(e.shoot&&e.cd<=0){e.cd=e.shoot;shot(e.x,e.y,Math.cos(a)*300,Math.sin(a)*300,8,0)}
+  const [X,Z]=tw(e.x,e.y);e.m.position.set(X,Math.abs(Math.sin(tm*8+e.ph))*1.5,Z);e.m.rotation.y=Math.atan2(Math.cos(a),Math.sin(a));
+  const u=e.m.userData;u.fill.scale.x=Math.max(.001,e.hp/e.max);u.bar.quaternion.copy(cam.quaternion)}
+ for(const b of S.bu){b.x+=b.vx*dt;b.y+=b.vy*dt;b.l-=dt;
+  if(b.own){for(const e of S.en)if(!e.dead&&Math.hypot(e.x-b.x,e.y-b.y)<e.r){hit(e,b.d);b.l=0;break}}
+  else if(Math.hypot(S.x-b.x,S.y-b.y)<14){S.hp-=b.d;b.l=0}
+  const [X,Z]=tw(b.x,b.y);b.m.position.x=X;b.m.position.z=Z}
+ for(const j of S.jetList){j.x+=700*dt;const [X,Z]=tw(j.x,j.y);j.m.position.set(X,70,Z);S.en.forEach(e=>{if(Math.abs(e.y-j.y)<45&&Math.abs(e.x-j.x)<40)hit(e,1200*dt)})}
+ S.pets.forEach((p,i)=>{const pd=PM[p.id];p.x=p.x??S.x;p.y=p.y??S.y;const tx=S.x-30-i*26,ty=S.y+26;
+  p.x+=(tx-p.x)*Math.min(1,dt*4);p.y+=(ty-p.y)*Math.min(1,dt*4);
+  let t=null,bd=pd.rng;for(const e of S.en){const d=Math.hypot(e.x-p.x,e.y-p.y);if(d<bd){bd=d;t=e}}
+  if(t){hit(t,pd.dps*dt);p.m.rotation.y=Math.atan2(t.x-p.x,t.y-p.y)}else p.m.rotation.y=Math.atan2(S.x-p.x,S.y-p.y);
+  const [X,Z]=tw(p.x,p.y);p.m.position.set(X,(p.m.userData.fly||0)+Math.sin(tm*6+i)*2,Z)});
+ S.fx.forEach(f=>{f.t-=dt;if(f.rise)f.m.position.y+=30*dt;if(f.grow){f.m.scale.setScalar(.3+(1-f.t/f.t0)*.9);f.m.material.opacity=Math.max(0,f.t/f.t0*.7)}});
+ [...S.en,...S.bu,...S.fx].forEach(o=>{if(o.dead||o.l<=0||o.t<=0)sc.remove(o.m)});
+ S.en=S.en.filter(e=>!e.dead);S.bu=S.bu.filter(b=>b.l>0&&b.x>-20&&b.x<W+20&&b.y>-20&&b.y<H+20);S.fx=S.fx.filter(f=>f.t>0);
+ S.jetList=S.jetList.filter(j=>{if(j.x<W+100)return true;sc.remove(j.m);return false});
+ const f=$('flash');f.style.opacity=Math.max(0,f.style.opacity-dt*1.5);if(S.hp<=0)S.over=true}
+const ray=new THREE.Raycaster(),pl=new THREE.Plane(new THREE.Vector3(0,1,0),0),hv=new THREE.Vector3();
+function aim(){ray.setFromCamera(ndc,cam);if(ray.ray.intersectPlane(pl,hv)){mouse.x=hv.x+400;mouse.y=hv.z+250}}
+let prev=performance.now();
+function loop(now){const dt=Math.min(.05,(now-prev)/1000);prev=now;const tm=now/1000;
+ const [X,Z]=tw(S.x,S.y);cam.position.set(X*.85,250,Z*.85+195);cam.lookAt(X*.85,0,Z*.85);cam.updateMatrixWorld();aim();
+ if(!shopOpen&&!S.over)step(dt,now,tm);
+ hero.position.set(X,Math.abs(Math.sin(tm*9))*(keys.w||keys.a||keys.s||keys.d?1.5:0),Z);hero.rotation.y=Math.atan2(mouse.x-S.x,mouse.y-S.y);
+ S.pets.forEach(p=>{(p.m.userData.wings||[]).forEach(([w,s])=>w.rotation.z=s*Math.sin(tm*(p.m.userData.tuck?7:10))*(p.m.userData.tuck?.8:.6))});
+ const walk=(m,a)=>(m.userData.legs||[]).forEach((l,i)=>l.rotation.x=m.userData.tuck?.9:Math.sin(tm*10+(i%3?Math.PI:0))*a);S.en.forEach(e=>walk(e.m,.7));S.pets.forEach(p=>walk(p.m,.5));walk(hero,(keys.w||keys.a||keys.s||keys.d||keys.ArrowUp||keys.ArrowDown||keys.ArrowLeft||keys.ArrowRight)?.7:0);flashL.intensity*=.8;
+ R.render(sc,cam);hud();
+ if(S.over)say('You were defeated. Press R to respawn (you keep your gear).');requestAnimationFrame(loop)}
+/* shop and memberships */
+function buy(cost,fn){if(S.coins<cost)return say('Not enough coins. Defeat more enemies.');S.coins-=cost;fn();render()}
+function grant(t){for(const x of TIERS.filter(x=>x.lvl>S.member&&x.lvl<=t.lvl)){
+  if(x.lvl==1){S.owned.plusdragon=1;equipPet('plusdragon',true)}giveGear(x.lvl+5);S.jets+=[0,3,7,20][x.lvl];
+  if(x.lvl==2){S.dyn+=100;S.coins+=100}if(x.lvl==3){S.nuke+=30}}S.member=t.lvl;render()}
+function subscribe(t){const u=PAY_LINKS[t.lvl];
+ if(!u)return say('Real payments are not connected yet. The owner needs to add a payment link for '+t.name+'.');
+ window.open(u,'_blank','noopener');say('Finish paying in the new tab. '+t.name+' unlocks once the payment is verified.')}
+function render(){let h=`<div><b style="font-size:20px">Shop</b> &nbsp; 🪙 ${S.coins} &nbsp;<button id="x">Close (B)</button></div><div>`;
+ for(const [k,l] of [['guns','Guns'],['gear','Gear'],['items','Jets & items'],['pets','Pets'],['mem','Memberships']])h+=`<button data-tab="${k}" ${tab===k?'style="background:var(--accent);color:#fff"':''}>${l}</button>`;h+='</div>';
+ if(tab==='guns')for(const g of GUNS){const own=S.guns[g.id],eq=S.gun===g.id;
+  h+=`<div class="item"><span><b>${g.name}</b><small>Damage ${g.dmg}${g.pel>1?' × '+g.pel:''}, fires every ${g.rate} ms</small></span><button data-gun="${g.id}" ${eq?'disabled':''}>${eq?'Equipped':own?'Equip':'Buy 🪙'+g.cost}</button></div>`}
+ if(tab==='pets'){h+=petUI();for(const p of []){if(p.plus&&S.member<1)continue;const own=S.pets.find(q=>q.id===p.id);
+  h+=`<div class="item"><span><b>${p.name}</b><small>Attacks nearby enemies for ${p.dps} damage per second</small></span><button data-pet="${p.id}" ${own?'disabled':''}>${own?'Owned':'Buy 🪙'+p.cost}</button></div>`}
+  if(S.member<1)h+='<p>Plus members also get a Dragon, the strongest pet.</p>'}
+ if(tab==='gear')h+=gearUI();if(tab==='items')h+=itemsUI();if(tab==='mem')for(const t of TIERS)h+=`<div class="item tier"><span><b>${t.name}: $${t.price} per year</b><small>${t.desc}</small></span><span><button data-mem="${t.lvl}" ${S.member>=t.lvl?'disabled':''}>${S.member>=t.lvl?'Active':'Buy $'+t.price}</button><button data-prev="${t.lvl}" ${S.member>=t.lvl?'disabled':''}>Free preview</button></span></div>`;
+ $('shop').innerHTML=h;$('shop').style.display='block'}
+$('shop').addEventListener('click',e=>{const d=e.target.dataset;if(e.target.id==='x')return toggle();
+ if(d.tab){tab=d.tab;render()}
+ if(d.gun){const g=GUNS.find(x=>x.id===d.gun);if(S.guns[g.id]){S.gun=g.id;render()}else buy(g.cost,()=>{S.guns[g.id]=1;S.gun=g.id})}
+ if(d.pet){const p=PM[d.pet];buy(p.cost,()=>{S.owned[p.id]=1;equipPet(p.id)})}
+ if(d.eq){equipPet(d.eq);render()}
+ if(d.gb){const g=GI[d.gb];buy(g.cost,()=>{S.gOwned[g.id]=1;S.gear[g.slot]=g.id;recalc();rebuild()})}
+ if(d.ge){S.gear[GI[d.ge].slot]=d.ge;recalc();rebuild();render()}
+ if(d.flt!==undefined){pf=d.flt;pg=0;render()}
+ if(d.pgo){pg+=+d.pgo;render()}
+ if(d.it){const it=ITEMS[+d.it];buy(it.cost,()=>{S[it.k]+=it.n})}
+ if(d.mem)subscribe(TIERS.find(x=>x.lvl==+d.mem));if(d.prev){grant(TIERS.find(x=>x.lvl==+d.prev));say('Free preview of the perks. This is not a purchase.')}});
+function toggle(){shopOpen=!shopOpen;if(shopOpen)render();else $('shop').style.display='none'}
+addEventListener('keydown',e=>{const k=e.key.length>1?e.key:e.key.toLowerCase();keys[k]=1;if(k==='b')toggle();if(shopOpen)return;
+ if(k==='e')dyn();if(k==='n')nuke();if(k==='j')jets();
+ if(k==='r'&&S.over){const k2={coins:S.coins,dyn:S.dyn,nuke:S.nuke,jets:S.jets,gun:S.gun,guns:S.guns,pets:S.pets,owned:S.owned,act:S.act,gear:S.gear,gOwned:S.gOwned,member:S.member,max:S.max};S.pets.forEach(p=>sc.remove(p.m));fresh(k2)}
+ if(k.startsWith('Arrow'))e.preventDefault()});
+addEventListener('keyup',e=>{keys[e.key.length>1?e.key:e.key.toLowerCase()]=0});
+cv.addEventListener('pointermove',e=>{const r=cv.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1)});
+cv.addEventListener('pointerdown',e=>{cv.dispatchEvent(new PointerEvent('pointermove',e));mouse.down=true});
+addEventListener('pointerup',()=>mouse.down=false);
+$('shop').addEventListener('change',e=>{if(e.target.id==='spf'){ps=e.target.value;pg=0;render()}});$('bShop').onclick=toggle;$('bDyn').onclick=dyn;$('bNuke').onclick=nuke;$('bJet').onclick=jets;
+requestAnimationFrame(loop);
+</script></body></html>
